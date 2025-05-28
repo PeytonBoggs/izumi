@@ -1,29 +1,17 @@
+from langchain_huggingface import HuggingFacePipeline
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_NAME = "arnir0/Tiny-LLM"
+llm = HuggingFacePipeline.from_model_id(
+    model_id="meta-llama/Llama-3.1-8B-Instruct",
+    task="text-generation",
+    device_map="cpu",
+    model_kwargs={
+        "torch_dtype": torch.bfloat16,
+        "low_cpu_mem_usage": True,
+        "max_memory": {0: "20GB", "cpu": "64GB"}
+    }
+)
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+result = llm.invoke("Give me current baseball standings")
 
-def generate_text(prompt, model, tokenizer, max_length=512, temperature=1, top_k=50, top_p=0.95):
-    inputs = tokenizer.encode(prompt, return_tensors="pt")
-
-    outputs = model.generate(
-        inputs,
-        max_length=max_length,
-        temperature=temperature,
-        top_k=top_k,
-        top_p=top_p,
-        do_sample=True
-    )
-
-
-    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return generated_text
-
-prompt = "Tell me about quantum mechanics"
-
-generated_text = generate_text(prompt, model, tokenizer)
-
-print(generated_text)
+print(result)
