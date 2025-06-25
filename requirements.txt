@@ -1,4 +1,0 @@
-langchain_huggingface
-torch
-transformers
-accelerate
