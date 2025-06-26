@@ -1,4 +1,6 @@
 from vertexai.preview.generative_models import GenerativeModel, Tool, FunctionDeclaration, Content, Part
+from rich.console import Console
+from rich.markdown import Markdown
 import requests
 
 get_weather_func = FunctionDeclaration(
@@ -13,9 +15,6 @@ get_weather_func = FunctionDeclaration(
     }
 )
 
-weather_tool = Tool(function_declarations=[get_weather_func])
-model = GenerativeModel("gemini-2.5-pro", tools=[weather_tool])
-
 def execute_weather_tool(location: str):
     mcp_request = {
         "protocol_version": "1.0",
@@ -27,26 +26,35 @@ def execute_weather_tool(location: str):
     response = requests.post("http://127.0.0.1:8000/mcp/weather", json=mcp_request)
     return response.json()["data"]
 
-conversation = [
-    Content(
-        role="user",
-        parts=[Part.from_text("Give me a summary of the current weather in Williamsburg, VA")]
+weather_tool = Tool(function_declarations=[get_weather_func])
+model = GenerativeModel("gemini-2.5-pro")
+#model = GenerativeModel("gemini-2.5-pro", tools=[weather_tool])
+chat = model.start_chat(history=[])
+
+console = Console()
+
+conversation = []
+while True:
+    prompt = input("Prompt input: ")
+
+    response = chat.send_message(prompt)
+
+    console.print(Markdown(response.text))
+
+    """
+        conversation.append(
+        Content(
+            role="model",
+            parts=[Part.from_text(response)]
+        )
     )
-]
-
-response = model.generate_content(
-    contents=conversation,
-    tools=[weather_tool]
-)
-
-if response.candidates and response.candidates[0].content.parts:
-    first_part = response.candidates[0].content.parts[0]
-    
-    if hasattr(first_part, 'function_call') and first_part.function_call:
-        func_call = first_part.function_call
-        
+    """
+    """
+    #If the agent requests a function call
+    if response.candidates and response.candidates[0].content.parts and hasattr(response.candidates[0].content.parts[0], 'function_call') and response.candidates[0].content.parts[0].function_call:
+        func_call = response.candidates[0].content.parts[0].function_call
         weather_data = execute_weather_tool(func_call.args["location"])
-        
+
         conversation.append(response.candidates[0].content)
         
         function_response = Content(
@@ -65,14 +73,13 @@ if response.candidates and response.candidates[0].content.parts:
         )
         
         conversation.append(function_response)
-        
+
         final_response = model.generate_content(
             contents=conversation,
             tools=[weather_tool]
         )
-        
+
         print(final_response.text)
     else:
-        print("No function call detected. Model response:", response.text)
-else:
-    print("Unexpected response format:", response)
+        print(response.text)
+    """
