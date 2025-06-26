@@ -1,4 +1,4 @@
-from vertexai.preview.generative_models import GenerativeModel, Tool, FunctionDeclaration, Content, Part
+from vertexai.preview.generative_models import GenerativeModel, Tool, ToolConfig, FunctionDeclaration, Content, Part
 from rich.console import Console
 from rich.markdown import Markdown
 import requests
@@ -15,7 +15,7 @@ get_weather_func = FunctionDeclaration(
     }
 )
 
-def execute_weather_tool(location: str):
+def get_current_weather(location: str):
     mcp_request = {
         "protocol_version": "1.0",
         "tool_id": "weather_tool",
@@ -27,8 +27,18 @@ def execute_weather_tool(location: str):
     return response.json()["data"]
 
 weather_tool = Tool(function_declarations=[get_weather_func])
-model = GenerativeModel("gemini-2.5-pro")
-#model = GenerativeModel("gemini-2.5-pro", tools=[weather_tool])
+
+system_instruction = """
+You are a helpful AI assistant. You have access to tool that gets the current weather from a location, nothing else.
+
+For all other topics - general questions, conversations, coding help, explanations, etc. - respond normally without using any tools.
+
+Only call the weather function when user asks about the current weather.
+
+For everything else, just have a normal conversation.
+"""
+
+model = GenerativeModel("gemini-2.5-pro", tools=[weather_tool], system_instruction=system_instruction)
 chat = model.start_chat(history=[])
 
 console = Console()
@@ -39,47 +49,22 @@ while True:
 
     response = chat.send_message(prompt)
 
-    console.print(Markdown(response.text))
-
-    """
-        conversation.append(
-        Content(
-            role="model",
-            parts=[Part.from_text(response)]
-        )
-    )
-    """
-    """
-    #If the agent requests a function call
-    if response.candidates and response.candidates[0].content.parts and hasattr(response.candidates[0].content.parts[0], 'function_call') and response.candidates[0].content.parts[0].function_call:
+    if (response.candidates[0].content.parts and 
+        len(response.candidates[0].content.parts) > 0 and
+        hasattr(response.candidates[0].content.parts[0], 'function_call') and
+        response.candidates[0].content.parts[0].function_call):
+        
         func_call = response.candidates[0].content.parts[0].function_call
-        weather_data = execute_weather_tool(func_call.args["location"])
-
-        conversation.append(response.candidates[0].content)
+        weather_data = get_current_weather(**func_call.args)
         
-        function_response = Content(
-            role="user",
-            parts=[
-                Part.from_function_response(
-                    name="get_current_weather",
-                    response={
-                        "location": weather_data['location'],
-                        "temperature_celsius": weather_data['temperature_celsius'],
-                        "humidity_percent": weather_data['humidity_percent'],
-                        "wind_speed_kmh": weather_data['wind_speed_kmh']
-                    }
-                )
-            ]
-        )
-        
-        conversation.append(function_response)
-
-        final_response = model.generate_content(
-            contents=conversation,
-            tools=[weather_tool]
+        response = chat.send_message(
+            Content(
+                role="function",
+                parts=[Part.from_function_response(
+                    name=func_call.name,
+                    response=weather_data
+                )]
+            )
         )
 
-        print(final_response.text)
-    else:
-        print(response.text)
-    """
+    console.print(Markdown(response.text))
