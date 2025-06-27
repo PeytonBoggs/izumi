@@ -16,15 +16,12 @@ get_weather_func = FunctionDeclaration(
 )
 
 def get_current_weather(location: str):
-    mcp_request = {
-        "protocol_version": "1.0",
-        "tool_id": "weather_tool",
-        "method": "get_current_weather",
-        "parameters": {"location": location}
-    }
-    
-    response = requests.post("http://127.0.0.1:8000/mcp/weather", json=mcp_request)
-    return response.json()["data"]
+    print(location)
+    response = requests.get(f"http://127.0.0.1:8000/weather/{location}")
+    print(response)
+    response.raise_for_status()
+    print(response.json())
+    return response.json()
 
 weather_tool = Tool(function_declarations=[get_weather_func])
 
