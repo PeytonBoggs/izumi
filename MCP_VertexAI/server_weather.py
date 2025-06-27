@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 import requests
+import uvicorn
 
 app = FastAPI()
 
@@ -37,3 +38,6 @@ async def get_weather(location: str):
         raise HTTPException(status_code=500, detail=f"API request failed: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)

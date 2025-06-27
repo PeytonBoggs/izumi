@@ -1,4 +1,4 @@
-from vertexai.preview.generative_models import GenerativeModel, Tool, ToolConfig, FunctionDeclaration, Content, Part
+from vertexai.preview.generative_models import GenerativeModel, Tool, FunctionDeclaration, Content, Part
 from rich.console import Console
 from rich.markdown import Markdown
 import requests
@@ -16,31 +16,51 @@ get_weather_func = FunctionDeclaration(
 )
 
 def get_current_weather(location: str):
-    print(location)
     response = requests.get(f"http://127.0.0.1:8000/weather/{location}")
-    print(response)
     response.raise_for_status()
-    print(response.json())
     return response.json()
 
 weather_tool = Tool(function_declarations=[get_weather_func])
 
+get_mlb_func = FunctionDeclaration(
+    name="get_mlb",
+    description="Get current MLB games",
+    parameters={
+        "type": "object",
+        "properties": {}
+    }
+)
+
+def get_mlb():
+    response = requests.get(f"http://127.0.0.1:8001/mlb")
+    response.raise_for_status()
+    return response.json()
+
+mlb_tool = Tool(function_declarations=[get_mlb_func])
+
+tools = Tool(function_declarations=[get_weather_func, get_mlb_func])
+
 system_instruction = """
-You are a helpful AI assistant. You have access to tool that gets the current weather from a location, nothing else.
+You are a helpful AI assistant. You have access to two tools: one that gets the current weather from a location, and one that gets information about current MLB games.
 
 For all other topics - general questions, conversations, coding help, explanations, etc. - respond normally without using any tools.
 
-Only call the weather function when user asks about the current weather.
+Only call the functions when user asks a question where your answer could be enhanced by that extra information.
 
-For everything else, just have a normal conversation.
+You are also very smart; if the user asks what the weather is at a certain baseball game, you can look up the baseball game happening, unserstand where that game is being played by the home team, and then look up the temperature for that location.
 """
 
-model = GenerativeModel("gemini-2.5-pro", tools=[weather_tool], system_instruction=system_instruction)
-chat = model.start_chat(history=[])
+generation_config = {
+    "temperature": 0.7,
+    "top_p": 0.8,
+    "top_k": 40,
+    "max_output_tokens": 1024,
+}
 
+model = GenerativeModel("gemini-2.0-flash-lite-001", tools=[tools], system_instruction=system_instruction, generation_config=generation_config)
+chat = model.start_chat(history=[])
 console = Console()
 
-conversation = []
 while True:
     prompt = input("Prompt input: ")
 
@@ -52,14 +72,20 @@ while True:
         response.candidates[0].content.parts[0].function_call):
         
         func_call = response.candidates[0].content.parts[0].function_call
-        weather_data = get_current_weather(**func_call.args)
+
+        if func_call.name == "get_current_weather":
+            function_data = get_current_weather(**func_call.args)
+        elif func_call.name == "get_mlb":
+            function_data = get_mlb()
+        else:
+            function_data = {"error": "Unknown function"}
         
         response = chat.send_message(
             Content(
                 role="function",
                 parts=[Part.from_function_response(
                     name=func_call.name,
-                    response=weather_data
+                    response=function_data
                 )]
             )
         )
