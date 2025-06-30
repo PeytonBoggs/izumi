@@ -47,7 +47,9 @@ For all other topics - general questions, conversations, coding help, explanatio
 
 Only call the functions when user asks a question where your answer could be enhanced by that extra information.
 
-You are also very smart; if the user asks what the weather is at a certain baseball game, you can look up the baseball game happening, unserstand where that game is being played by the home team, and then look up the temperature for that location.
+You are also very smart; if the user asks what the weather is at a certain baseball game, you can look up the baseball game happening, understand where that game is being played by the home team, and then look up the temperature for that location.
+
+You can make multiple function calls in sequence if needed to answer a user's question completely, for example, looking up the weather for each location that a baseball game is being played.
 """
 
 generation_config = {
@@ -61,33 +63,56 @@ model = GenerativeModel("gemini-2.0-flash-lite-001", tools=[tools], system_instr
 chat = model.start_chat(history=[])
 console = Console()
 
+def execute_function(func):
+    if func.name == "get_current_weather":
+        function_data = get_current_weather(**func.args)
+    elif func.name == "get_mlb":
+        function_data = get_mlb()
+    else:
+        function_data = {"error": "Unknown function"}
+
+    return function_data
+
 while True:
     prompt = input("Prompt input: ")
+    
+    if prompt.lower() in ['quit', 'exit', 'bye']:
+        break
 
     response = chat.send_message(prompt)
 
-    if (response.candidates[0].content.parts and 
-        len(response.candidates[0].content.parts) > 0 and
-        hasattr(response.candidates[0].content.parts[0], 'function_call') and
-        response.candidates[0].content.parts[0].function_call):
-        
-        func_call = response.candidates[0].content.parts[0].function_call
+    has_function_call = True
 
-        if func_call.name == "get_current_weather":
-            function_data = get_current_weather(**func_call.args)
-        elif func_call.name == "get_mlb":
-            function_data = get_mlb()
-        else:
-            function_data = {"error": "Unknown function"}
+    while has_function_call:
+        has_function_call = False
+        function_reponses = []
         
-        response = chat.send_message(
-            Content(
-                role="function",
-                parts=[Part.from_function_response(
-                    name=func_call.name,
-                    response=function_data
-                )]
-            )
-        )
+        if response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+
+                if hasattr(part, "text") and part.text and len(response.candidates[0].content.parts) > 1:
+                    console.print(Markdown(part.text))
+                    console.print("\n")
+
+                if hasattr(part, "function_call") and part.function_call:
+                    result = execute_function(part.function_call)
+                    
+                    function_reponses.append(
+                        Part.from_function_response(
+                            name=part.function_call.name,
+                            response=result
+                        )
+                    )
+
+                    has_function_call = True
+
+            if function_reponses:
+                response = chat.send_message(
+                            Content(
+                                role="function",
+                                parts=function_reponses
+                            )
+                        )
 
     console.print(Markdown(response.text))
+    console.print("\n")
