@@ -38,18 +38,44 @@ def get_mlb():
 
 mlb_tool = Tool(function_declarations=[get_mlb_func])
 
-tools = Tool(function_declarations=[get_weather_func, get_mlb_func])
+get_distance_func = FunctionDeclaration(
+    name="get_distance",
+    description="Get the distance between two locations",
+    parameters={
+        "type": "object",
+        "properties": {
+            "pointa": {"type": "string"},
+            "pointb": {"type": "string"}
+        },
+        "required": ["pointa", "pointb"]
+    }
+)
+
+def get_distance(pointa: str, pointb: str):
+    response = requests.get(f"http://127.0.0.1:8002/distance/{pointa}/{pointb}")
+    response.raise_for_status()
+    return response.json()
+
+distance_tool = Tool(function_declarations=[get_distance_func])
+
+tools = Tool(function_declarations=[get_weather_func, get_mlb_func, get_distance_func])
 
 system_instruction = """
-You are a helpful AI assistant. You have access to two tools: one that gets the current weather from a location, and one that gets information about current MLB games.
+You are a helpful AI assistant. You have access to three tools:
+    one that gets the current weather from a location,
+    one that gets information about current MLB games,
+    and one that gets distance and trip duration between two locations.
 
 For all other topics - general questions, conversations, coding help, explanations, etc. - respond normally without using any tools.
 
 Only call the functions when user asks a question where your answer could be enhanced by that extra information.
 
-You are also very smart; if the user asks what the weather is at a certain baseball game, you can look up the baseball game happening, understand where that game is being played by the home team, and then look up the temperature for that location.
-
-You can make multiple function calls in sequence if needed to answer a user's question completely, for example, looking up the weather for each location that a baseball game is being played.
+You are also very smart;
+    if the user asks what the weather is at a certain baseball game, you can look up the baseball game happening, understand where that game is being played by the home team, and then look up the temperature for that location.
+    if the user asks to drive between multiple locations, you can look up distance between each of the legs, then add up all the legs together.
+    if the user wants to know the distance between all current baseball games, you can look each location up, make a route with each location as one leg, and add all of the distances together.
+    
+You can make multiple function calls in sequence if needed to answer a user's question completely, for example, looking up the weather for each city that a baseball game is being played in.
 """
 
 generation_config = {
@@ -68,6 +94,8 @@ def execute_function(func):
         function_data = get_current_weather(**func.args)
     elif func.name == "get_mlb":
         function_data = get_mlb()
+    elif func.name == "get_distance":
+        function_data = get_distance(**func.args)
     else:
         function_data = {"error": "Unknown function"}
 
